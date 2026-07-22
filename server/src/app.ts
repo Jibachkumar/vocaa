@@ -31,12 +31,21 @@ app.use(
 // express config
 app.use(express.json());
 app.use(express.urlencoded({ extended: true, limit: "16kb" }));
+// Parse raw binary payloads for audio/wav content types
+app.use(express.raw({ type: "audio/wav", limit: "50mb" }));
 // app.use(express.static("public"));
+app.use((req, res, next) => {
+  console.log("REQUEST:", req.method, req.url);
+
+  next();
+});
 
 // routes declaration
 import { checkServerStartedrouter } from "./routers/health.routes.js";
+import { transcribeRouter } from "./routers/transcription.route.js";
 
 app.use("/api/v1/server-check", checkServerStartedrouter);
+app.use("/api/v1/audio", transcribeRouter);
 
 // error
 app.use((err: ApiError, req: Request, res: Response, next: NextFunction) => {

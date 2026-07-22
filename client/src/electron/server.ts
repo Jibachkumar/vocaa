@@ -52,6 +52,7 @@ const waitForServer = async (timeout = 30000) => {
 
 const stopServer = () => {
   serverProcess?.kill();
+  serverProcess = undefined;
 };
 
 export { startServer, waitForServer, stopServer };
