@@ -10,6 +10,8 @@ import { registerGlobalShortcut } from "./services/shortcut.service.js";
 import { getOverlayWindow } from "./overlay.js";
 import { setMainWindow } from "./windowManager.js";
 import { startNativeRecording, stopNativeRecording } from "./native/audio.js";
+import { sileroSession } from "./audio/vad/SileroSession.js";
+// import { inspect } from "./audio/vad/inspectModel.js";
 
 // helper for creating BrowserWindow
 const createWindow = async () => {
@@ -50,6 +52,10 @@ const bootstrap = async () => {
 
     pollResources();
 
+    await sileroSession.load();
+
+    // await inspect();
+
     registerGlobalShortcut();
 
     // 2. Listen to clicks coming from your React frontend buttons
@@ -65,7 +71,7 @@ const bootstrap = async () => {
     setTimeout(() => {
       console.log("Calling stopNativeRecording");
       stopNativeRecording();
-    }, 10000);
+    }, 15000);
 
     return mainWindow;
   } catch (err) {

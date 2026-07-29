@@ -19,6 +19,7 @@ const transcribeAudio = async (
     req.file.buffer.byteOffset,
     req.file.buffer.length / Float32Array.BYTES_PER_ELEMENT,
   );
+
   const chunk: AudioChunk = {
     audio,
     sampleRate: Number(req.body.sampleRate),
@@ -31,7 +32,7 @@ const transcribeAudio = async (
   try {
     const transcript = await speech.transcribe(chunk);
 
-    return res.json({
+    res.json({
       success: true,
       transcript,
     });

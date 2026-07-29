@@ -19,13 +19,16 @@
     "dist:linux": "npm run transpile:electron && npm run build && electron-builder --mac --x64"
   },
   "dependencies": {
+    "onnxruntime-node": "^1.27.0",
     "os-utils": "^0.0.14",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "wave-resampler": "^1.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^24.13.2",
+    "@types/bindings": "^1.5.5",
+    "@types/node": "^24.13.3",
     "@types/os-utils": "^0.0.4",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

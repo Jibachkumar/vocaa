@@ -1,16 +1,15 @@
 import type { SpeechProvider } from "../interfaces/SpeechProvider.js";
 import { encodeWav } from "../../utils/wavEncoder.js";
-import { stereoToMono } from "../../utils/stereoToMono.js";
 import type { AudioChunk } from "../../type.js";
 import { ApiError } from "../../utils/ApiError.js";
 
 export class ParakeetProvider implements SpeechProvider {
   async transcribe(chunk: AudioChunk): Promise<string> {
-    const mono = stereoToMono(chunk.audio);
-
-    const wav = encodeWav(mono, chunk.sampleRate, 1);
+    const wav = encodeWav(chunk.audio, chunk.sampleRate, 1);
 
     console.log("Audio bytes:", wav.length);
+
+    const start = Date.now();
 
     // request body
     const form = new FormData();
@@ -46,6 +45,8 @@ export class ParakeetProvider implements SpeechProvider {
       console.log("NVIDIA error: ", response);
       throw new ApiError(500, "Speech API failed");
     }
+
+    console.log(`Parakeet took ${Date.now() - start} ms`);
 
     const json = await response.json();
 

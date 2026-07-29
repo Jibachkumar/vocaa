@@ -2,6 +2,8 @@ export interface AudioChunk {
   /** Normalized PCM samples (-1.0 to 1.0) */
   audio: Float32Array;
 
+  // pcm16?: Buffer;
+
   /** Sample rate (48000, 16000, etc.) */
   sampleRate: number;
 
@@ -16,4 +18,9 @@ export interface AudioChunk {
 
   /** Incrementing chunk id */
   sequence: number;
+}
+
+export interface SpeechSegment {
+  audio: Buffer;
+  samples: number;
 }
