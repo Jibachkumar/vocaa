@@ -17,15 +17,11 @@ const getNativePath = () => {
       "..",
       "native",
       "audio-capture",
-      "audio-capture.win32-x64-msvc.node",
+      "audio-capture.node",
     );
   }
 
-  return path.join(
-    process.resourcesPath,
-    "native",
-    "audio-capture.win32-x64-msvc.node",
-  );
+  return path.join(process.resourcesPath, "native", "audio-capture.node");
 };
 
 const getSileroModelPath = () => {

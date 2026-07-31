@@ -1,3 +1,5 @@
+mod keyboard;
+
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     SampleFormat,
@@ -259,4 +261,10 @@ impl AudioCapture {
 
         Ok(())
     }
+
+}
+
+#[napi]
+pub fn type_text(text: String) {
+    keyboard::type_text(&text);
 }
