@@ -1,11 +1,20 @@
-import { EndpointController } from "../audio/vad/EndPointContoller.js";
-import { EndpointDetector } from "../audio/vad/FrameEndpointDetector.js";
+import { AudioPreprocessor } from "../audio/preprocessing/AudioPreprocessor.js";
+import { SpeechQueue } from "../audio/SpeechQueue.js";
 import { SpeechAccumulator } from "../audio/SpeechAccumulator.js";
-import { PreRollBuffer } from "../audio/vad/PreRollBuffer.js";
+
+import { VadPreprocessor } from "../audio/vad/VadPreprocessor.js";
 import { VadFrameAccumulator } from "../audio/vad/VadFrameAccumulator.js";
+import { PreRollBuffer } from "../audio/vad/PreRollBuffer.js";
+import { SileroVad } from "../audio/vad/SileroVad.js";
+import { SilenceValidator } from "../audio/vad/SilenceValidator.js";
+import { EndpointController } from "../audio/vad/EndPointContoller.js";
+
+import {
+  EndpointEventType,
+  EndpointDetector,
+} from "../audio/vad/FrameEndpointDetector.js";
 import { SpeechSegment, AudioChunk } from "../types.js";
 import { bufferToFloat32 } from "../utils.js";
-import { EndpointEventType } from "../audio/vad/FrameEndpointDetector.js";
 
 enum RecorderState {
   IDLE,
@@ -19,10 +28,23 @@ interface RecordingConfig {
   channels: number;
 }
 
-class RecordingPipeline {
+interface AudioCapture {
+  start(): void;
+  stop(): void;
+
+  isRecording(): boolean;
+
+  sampleRate(): number;
+  channels(): number;
+
+  onAudioData(callback: (err: unknown, pcm: number[]) => void): void;
+}
+
+export class RecordingPipeline {
   private preRoll: PreRollBuffer | null = null;
   private accumulator: SpeechAccumulator | null = null;
   private readonly endpointController: EndpointController;
+  private readonly silenceValidator = new SilenceValidator();
 
   private static readonly PRE_ROLL_MS = 300;
 
@@ -36,11 +58,16 @@ class RecordingPipeline {
 
   private initialized = false;
 
+  private readonly handleAudioData = this.onAudioData.bind(this);
+  private readonly handleVadFrame = this.onVadFrame.bind(this);
+  private readonly handleSpeechSegment = this.onSpeechSegment.bind(this);
+
   constructor(
     private readonly recorder: AudioCapture,
     private readonly detector: EndpointDetector,
     private readonly vadAccumulator: VadFrameAccumulator,
     private readonly preprocessor: AudioPreprocessor,
+    private readonly vadPreprocessor: VadPreprocessor,
     private readonly vad: SileroVad,
     private readonly queue: SpeechQueue,
   ) {
@@ -48,7 +75,43 @@ class RecordingPipeline {
       this.onEndpointTimeout(),
     );
 
-    this.initialize();
+    this.initializeCallbacks();
+  }
+
+  // helper for accumulator creation in start function
+  private createAccumulator() {
+    this.accumulator = new SpeechAccumulator(
+      this.recordingConfig.sampleRate,
+      this.recordingConfig.channels,
+    );
+
+    this.accumulator.on("segment", this.handleSpeechSegment);
+  }
+
+  // helper for preRollBuffer in start function
+  private createPreRollBuffer() {
+    const bytesPerSample = Float32Array.BYTES_PER_ELEMENT;
+
+    const preRollBytes =
+      (this.recordingConfig.sampleRate *
+        this.recordingConfig.channels *
+        bytesPerSample *
+        RecordingPipeline.PRE_ROLL_MS) /
+      1000;
+
+    this.preRoll = new PreRollBuffer(preRollBytes);
+  }
+
+  // hepler for resetting in start function
+  private resetSession() {
+    this.endpointController.cancel();
+    this.detector.reset();
+    this.vadAccumulator.reset();
+    this.vad.reset();
+    this.state = RecorderState.WAITING_FOR_SPEECH;
+    this.sequence = 0;
+    this.preRoll?.reset();
+    this.silenceValidator.reset();
   }
 
   // starting native recording
@@ -69,6 +132,7 @@ class RecordingPipeline {
       channels: this.recorder.channels(),
     };
 
+    console.log("After start()");
     console.log("Recording:", this.recorder.isRecording());
     console.log("Sample Rate:", this.recordingConfig.sampleRate);
     console.log("Channels:", this.recordingConfig.channels);
@@ -96,40 +160,39 @@ class RecordingPipeline {
     }
 
     this.recorder.stop();
-
-    this.detector.reset();
-
     this.preRoll?.reset();
+    this.detector.reset();
+    this.state = RecorderState.IDLE;
 
+    this.accumulator?.removeAllListeners();
     this.accumulator = null;
     this.preRoll = null;
 
     this.vadAccumulator.reset();
     this.vad.reset();
-
-    this.state = RecorderState.IDLE;
+    this.silenceValidator.reset();
 
     console.log("Recording:", this.recorder.isRecording());
   }
 
-  // helper for initializing function
-  private initialize() {
+  // helper for initializing audio pipeline function
+  private initializeCallbacks() {
     if (this.initialized) {
       return;
     }
 
     this.initialized = true;
 
-    this.recorder.onAudioData(this.onAudioData.bind(this));
+    this.recorder.onAudioData(this.handleAudioData);
 
-    this.vadAccumulator.on("frame", this.onVadFrame.bind(this));
+    this.vadAccumulator.on("frame", this.handleVadFrame);
   }
 
   // helper for endpoint timer
   private onEndpointTimeout() {
-    if (this.state !== RecorderState.WAITING_ENDPOINT) {
-      return;
-    }
+    // this.endpointController.cancel();
+
+    if (this.state !== RecorderState.WAITING_ENDPOINT) return;
 
     console.log("Endpoint timeout");
 
@@ -137,21 +200,58 @@ class RecordingPipeline {
       this.accumulator.flush();
     }
 
+    this.state = RecorderState.WAITING_FOR_SPEECH;
+
     this.preRoll?.reset();
     this.detector.reset();
-
-    this.state = RecorderState.WAITING_FOR_SPEECH;
   }
 
   //
-  private onAudioData(err: unknown, pcm: number[]) {}
+  private onAudioData(err: unknown, pcm: number[]) {
+    if (!this.accumulator || !this.preRoll) return;
+
+    if (err) {
+      console.error(err);
+      return;
+    }
+
+    const nativeBuffer = Buffer.from(pcm);
+
+    if (
+      this.state === RecorderState.WAITING_FOR_SPEECH ||
+      this.state === RecorderState.WAITING_ENDPOINT
+    ) {
+      this.preRoll.add(nativeBuffer);
+    }
+
+    if (
+      this.state === RecorderState.COLLECTING ||
+      this.state === RecorderState.WAITING_ENDPOINT
+    ) {
+      this.accumulator.addChunk(nativeBuffer);
+    }
+
+    const vadAudio = this.vadPreprocessor.process(
+      nativeBuffer,
+      this.recordingConfig.channels,
+      this.recordingConfig.sampleRate,
+    );
+
+    this.vadAccumulator.addChunk(vadAudio);
+  }
 
   // vad processing function
   private async onVadFrame(frame: Float32Array) {
     try {
-      const decision = await this.vad.isSpeech(frame);
+      const rawDecision = await this.vad.isSpeech(frame);
+      const decision = this.silenceValidator.update(rawDecision);
 
-      // console.log(decision);
+      console.log({
+        // probability: decision.probability,
+        speaking: decision.speaking,
+        started: decision.started,
+        stopped: decision.stopped,
+      });
 
       if (!this.accumulator || !this.preRoll) return;
 
@@ -164,11 +264,10 @@ class RecordingPipeline {
 
           console.log("Speech recovery detected -> restarting endpoint");
 
-          this.endpointController.schedule({
-            speechDurationMs: this.detector.getSpeechDuration(),
-            silenceDurationMs: this.detector.getSilenceDuration(),
-            recovering: true,
-          });
+          this.endpointController.cancel();
+
+          this.state = RecorderState.COLLECTING;
+
           break;
         }
 
@@ -242,46 +341,10 @@ class RecordingPipeline {
       sequence: ++this.sequence,
     };
 
+    console.log(chunk.audio.length);
+
     const processed = this.preprocessor.process(chunk);
 
     void this.queue.enqueue(processed);
-  }
-
-  private createAccumulator() {
-    this.accumulator = new SpeechAccumulator(
-      this.recordingConfig.sampleRate,
-      this.recordingConfig.channels,
-    );
-
-    this.accumulator.on("segment", (segment) => this.onSpeechSegment(segment));
-  }
-
-  // helper for preRollBuffer function
-  private createPreRollBuffer() {
-    const bytesPerSample = Float32Array.BYTES_PER_ELEMENT;
-
-    const preRollBytes =
-      (this.recordingConfig.sampleRate *
-        this.recordingConfig.channels *
-        bytesPerSample *
-        RecordingPipeline.PRE_ROLL_MS) /
-      1000;
-
-    this.preRoll = new PreRollBuffer(preRollBytes);
-  }
-
-  // hepler for resetting
-  private resetSession() {
-    this.endpointController.cancel();
-
-    this.detector.reset();
-
-    this.vadAccumulator.reset();
-
-    this.vad.reset();
-
-    this.state = RecorderState.WAITING_FOR_SPEECH;
-
-    this.sequence = 0;
   }
 }

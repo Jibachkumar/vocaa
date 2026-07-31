@@ -71,7 +71,7 @@ const bootstrap = async () => {
     setTimeout(() => {
       console.log("Calling stopNativeRecording");
       stopNativeRecording();
-    }, 15000);
+    }, 20000);
 
     return mainWindow;
   } catch (err) {

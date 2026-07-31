@@ -3,7 +3,7 @@ import type { VoiceActivityDetector } from "./VoiceActivityDetector.js";
 import { sileroSession } from "./SileroSession.js";
 import { VadDecision } from "./VoiceActivityDetector.js";
 
-class SileroVad implements VoiceActivityDetector {
+export class SileroVad implements VoiceActivityDetector {
   private state = new Float32Array(2 * 1 * 128);
 
   private context = new Float32Array(64);
@@ -90,28 +90,30 @@ class SileroVad implements VoiceActivityDetector {
     }
 
     // ---------- CURRENTLY SPEAKING ----------
-    if (probability > SileroVad.STOP_THRESHOLD) {
-      this.recoveryCounter++;
+    if (this.speaking) {
+      if (probability > SileroVad.STOP_THRESHOLD) {
+        this.recoveryCounter++;
 
-      if (this.recoveryCounter >= 2) {
-        this.hangoverCounter = 0;
+        if (this.recoveryCounter >= 2) {
+          this.hangoverCounter = 0;
+          this.recoveryCounter = 0;
+        }
+      } else {
         this.recoveryCounter = 0;
-      }
-    } else {
-      this.recoveryCounter = 0;
-      this.hangoverCounter++;
+        this.hangoverCounter++;
 
-      if (this.hangoverCounter >= SileroVad.HANGOVER_FRAMES) {
-        this.speaking = false;
-        this.hangoverCounter = 0;
+        if (this.hangoverCounter >= SileroVad.HANGOVER_FRAMES) {
+          this.speaking = false;
+          this.hangoverCounter = 0;
+        }
       }
     }
 
-    console.log({
-      probability,
-      speaking: this.speaking,
-      hangover: this.hangoverCounter,
-    });
+    // console.log({
+    //   probability,
+    //   speaking: this.speaking,
+    //   hangover: this.hangoverCounter,
+    // });
 
     return {
       probability,
@@ -130,6 +132,7 @@ class SileroVad implements VoiceActivityDetector {
 
     this.hangoverCounter = 0;
     this.speechCounter = 0;
+    this.recoveryCounter = 0;
   }
 }
 

@@ -18,6 +18,8 @@ export interface AudioChunk {
 
   /** Incrementing chunk id */
   sequence: number;
+
+  transcript?: string;
 }
 
 export interface SpeechSegment {

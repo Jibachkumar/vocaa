@@ -5,7 +5,7 @@ import { normalize } from "./normalize.js";
 
 // import { resample } from "./resample.js";
 
-class AudioPreprocessor {
+export class AudioPreprocessor {
   process(chunk: AudioChunk): AudioChunk {
     let audio = chunk.audio;
 

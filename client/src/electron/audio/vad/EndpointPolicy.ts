@@ -1,4 +1,4 @@
-const BASE_DELAY = 500;
+const BASE_DELAY = 350;
 const MIN_DELAY = 300;
 const MAX_DELAY = 900;
 

@@ -18,61 +18,56 @@ interface VadDecision {
 }
 
 export class EndpointDetector {
-  private readonly WEAK_SPEECH_THRESHOLD = 0.2;
-  private readonly RECOVERY_FRAMES = 3;
-
-  private weakSpeechFrames = 0;
-  private lastProbability = 0;
-
   private speechStart = 0;
   private silenceStart = 0;
   private speechDuration = 0;
+  private hasActiveSpeech = false;
 
-  /**
-   * Detect recovering speech before Silero
-   * emits another "started" event.
-   */
-  private detectSpeechRecovery(decision: VadDecision): boolean {
-    const rising =
-      decision.probability >= this.WEAK_SPEECH_THRESHOLD &&
-      decision.probability >= this.lastProbability;
+  private readonly STRONG_RECOVERY_PROBABILITY = 0.85;
 
-    if (rising) {
-      this.weakSpeechFrames++;
-    } else {
-      this.weakSpeechFrames = 0;
-    }
+  private isSpeechRecovery(decision: VadDecision): boolean {
+    if (!decision.speaking) return false;
 
-    this.lastProbability = decision.probability;
+    if (this.silenceStart === 0) return false;
 
-    if (this.weakSpeechFrames >= this.RECOVERY_FRAMES) {
-      this.weakSpeechFrames = 0;
+    const silenceMs = Date.now() - this.silenceStart;
+
+    // 0-500 ms silence Tiny pause → always recover
+    if (silenceMs < 500) {
+      console.log(`Recovery: immediate (${silenceMs} ms)`);
+      // this.silenceStart = 0;
       return true;
     }
 
+    // 500–800 ms silence Medium pause → require strong confidence
+    if (
+      silenceMs < 800 &&
+      decision.probability > this.STRONG_RECOVERY_PROBABILITY
+    ) {
+      console.log(
+        `Recovery: high confidence (${silenceMs} ms, p=${decision.probability})`,
+      );
+
+      return true;
+    }
+
+    // > 800 ms silence Long pause → new sentence
     return false;
   }
 
   update(decision: VadDecision): EndpointEvent {
-    // speach started
-    if (decision.started) {
-      this.weakSpeechFrames = 0;
-      this.lastProbability = 0;
-
-      this.speechStart = Date.now();
-      this.silenceStart = 0;
-
-      return {
-        type: EndpointEventType.SPEECH_STARTED,
-        probability: decision.probability,
-      };
-    }
-
-    // speech ended
+    // ------------------------------------------------------------
+    // Speech End
+    // ------------------------------------------------------------
     if (decision.stopped) {
-      this.weakSpeechFrames = 0;
-      this.lastProbability = 0;
+      if (!this.hasActiveSpeech) {
+        return {
+          type: EndpointEventType.NONE,
+          probability: decision.probability,
+        };
+      }
 
+      this.hasActiveSpeech = false;
       this.speechDuration = Date.now() - this.speechStart;
       this.silenceStart = Date.now();
 
@@ -82,15 +77,60 @@ export class EndpointDetector {
       };
     }
 
-    if (decision.speaking && this.detectSpeechRecovery(decision)) {
+    // ------------------------------------------------------------
+    // Speech resumed after a silence
+    // ------------------------------------------------------------
+    if (decision.speaking && this.silenceStart !== 0) {
+      // Short pause -> same utterance
+      if (this.isSpeechRecovery(decision)) {
+        this.hasActiveSpeech = true;
+        this.speechStart = Date.now();
+        this.silenceStart = 0;
+
+        return {
+          type: EndpointEventType.SPEECH_RECOVERED,
+          probability: decision.probability,
+        };
+      }
+
+      // Long pause -> new utterance
+      this.hasActiveSpeech = true;
+      this.speechStart = Date.now();
+      this.silenceStart = 0;
+
       return {
-        type: EndpointEventType.SPEECH_RECOVERED,
+        type: EndpointEventType.SPEECH_STARTED,
         probability: decision.probability,
       };
     }
 
+    // ------------------------------------------------------------
+    // Ignore ordinary frames
+    // ------------------------------------------------------------
+    if (!decision.started) {
+      return {
+        type: EndpointEventType.NONE,
+        probability: decision.probability,
+      };
+    }
+
+    // ------------------------------------------------------------
+    // First speech after recording starts
+    // ------------------------------------------------------------
+    // Ignore duplicate START events
+    if (this.hasActiveSpeech) {
+      return {
+        type: EndpointEventType.NONE,
+        probability: decision.probability,
+      };
+    }
+
+    this.hasActiveSpeech = true;
+    this.speechStart = Date.now();
+    this.silenceStart = 0;
+
     return {
-      type: EndpointEventType.NONE,
+      type: EndpointEventType.SPEECH_STARTED,
       probability: decision.probability,
     };
   }
@@ -106,12 +146,11 @@ export class EndpointDetector {
   }
 
   reset() {
-    this.weakSpeechFrames = 0;
-    this.lastProbability = 0;
-
+    console.log("EndpointDetector.reset()");
     this.speechStart = 0;
     this.speechDuration = 0;
     this.silenceStart = 0;
+    this.hasActiveSpeech = false;
   }
 }
 

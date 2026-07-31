@@ -13,7 +13,7 @@ function peak(samples: Float32Array) {
   return max;
 }
 
-class VadPreprocessor {
+export class VadPreprocessor {
   process(buffer: Buffer, channels: number, sampleRate: number): Float32Array {
     let audio = bufferToFloat32(buffer);
 

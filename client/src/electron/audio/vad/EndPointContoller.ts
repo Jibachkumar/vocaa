@@ -35,6 +35,7 @@ export class EndpointController {
 
     clearTimeout(this.timer);
     this.timer = null;
+    console.log("[Endpoint] Cancelled");
   }
 
   isRunning() {

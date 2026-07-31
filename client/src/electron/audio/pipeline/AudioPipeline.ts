@@ -4,15 +4,17 @@ import { PipelineStage } from "./PipelineStage.js";
 export class AudioPipeline {
   constructor(private readonly stages: PipelineStage[]) {}
 
-  async process(chunk: AudioChunk) {
+  async process(chunk: AudioChunk): Promise<AudioChunk | null> {
     let current: AudioChunk | null = chunk;
 
     for (const stage of this.stages) {
       if (!current) {
-        return;
+        return null;
       }
 
       current = await stage.process(current);
     }
+
+    return current;
   }
 }

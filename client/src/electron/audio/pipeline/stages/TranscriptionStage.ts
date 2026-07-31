@@ -4,7 +4,7 @@ import { transcribeAudio } from "../../TranscriptionService.js";
 
 export class TranscriptionStage implements PipelineStage {
   async process(chunk: AudioChunk) {
-    await transcribeAudio(chunk);
+    chunk.transcript = await transcribeAudio(chunk);
 
     return chunk;
   }

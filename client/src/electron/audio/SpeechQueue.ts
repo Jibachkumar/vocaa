@@ -2,7 +2,7 @@ import { AudioChunk } from "../types.js";
 import { speechWorker } from "./SpeechWorker.js";
 
 // storing pending chunks, processing them one at a time, starting the next chunk automatically when the current one finishes.
-class SpeechQueue {
+export class SpeechQueue {
   private queue: AudioChunk[] = [];
   private processing = false;
 
