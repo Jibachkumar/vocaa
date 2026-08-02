@@ -6,12 +6,25 @@ import { startServer, waitForServer, stopServer } from "./server.js";
 import { config } from "./config.js";
 import { getPathResolver } from "./pathResolver.js";
 import { createOverlayWindow } from "./overlay.js";
-import { registerGlobalShortcut } from "./services/shortcut.service.js";
+// import { registerGlobalShortcut } from "./services/shortcut.service.js";
 import { getOverlayWindow } from "./overlay.js";
 import { setMainWindow } from "./windowManager.js";
 import { startNativeRecording, stopNativeRecording } from "./native/audio.js";
 import { sileroSession } from "./audio/vad/SileroSession.js";
 // import { inspect } from "./audio/vad/inspectModel.js";
+
+import { getNativePath } from "./pathResolver.js";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const nativeAddon = require(getNativePath());
+
+const ShortcutEvent = {
+  None: 0,
+  Pressed: 1,
+  Released: 2,
+} as const;
+let recording = false;
 
 // helper for creating BrowserWindow
 const createWindow = async () => {
@@ -56,22 +69,28 @@ const bootstrap = async () => {
 
     // await inspect();
 
-    registerGlobalShortcut();
+    setInterval(() => {
+      const event = nativeAddon.takeShortcutEvent();
+
+      if (event === ShortcutEvent.Pressed && !recording) {
+        recording = true;
+        startNativeRecording();
+      }
+
+      if (event === ShortcutEvent.Released && recording) {
+        recording = false;
+        stopNativeRecording();
+      }
+    }, 10);
+
+    await nativeAddon.registerShortcut();
+
+    // registerGlobalShortcut();
 
     // 2. Listen to clicks coming from your React frontend buttons
     ipcMain.on("overlay:show", () => {
       getOverlayWindow()?.show();
     });
-
-    setTimeout(() => {
-      console.log("Calling startNativeRecording");
-      startNativeRecording();
-    }, 3000);
-
-    setTimeout(() => {
-      console.log("Calling stopNativeRecording");
-      stopNativeRecording();
-    }, 20000);
 
     return mainWindow;
   } catch (err) {

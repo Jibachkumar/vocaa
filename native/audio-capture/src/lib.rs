@@ -1,10 +1,12 @@
-mod keyboard;
+mod platform;
 
+use crate::platform::windows::{keyboard, shortcut};
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     SampleFormat,
     Stream,
 };
+
 
 use napi::{Error, Result};
 use std::sync::{Arc, Mutex};
@@ -267,4 +269,14 @@ impl AudioCapture {
 #[napi]
 pub fn type_text(text: String) {
     keyboard::type_text(&text);
+}
+
+#[napi]
+pub fn register_shortcut() -> Result<()> {
+    shortcut::register_shortcut()
+}
+
+#[napi]
+pub fn take_shortcut_event() -> i32 {
+    shortcut::take_shortcut_event()
 }
