@@ -34,6 +34,10 @@ export function stopNativeRecording() {
   pipeline.stop();
 }
 
+export function cancelNativeRecording() {
+  pipeline.cancel();
+}
+
 // export function isRecording() {
 //   return recorder.isRecording();
 // }

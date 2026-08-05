@@ -6,8 +6,8 @@ contextBridge.exposeInMainWorld("electron", {
   showOverlay: () => ipcRenderer.send("overlay:show"),
 
   onShortcutPressed: (callback: () => void) => {
-    ipcRenderer.on("shortcut-pressed", () => {
-      callback();
-    });
+    // ipcRenderer.on("shortcut-pressed", () => {
+    //   callback();
+    // });
   },
 });

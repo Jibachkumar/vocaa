@@ -58,6 +58,9 @@ export class RecordingPipeline {
 
   private initialized = false;
 
+  private shuttingDown = false;
+  private cancelled = false;
+
   private readonly handleAudioData = this.onAudioData.bind(this);
   private readonly handleVadFrame = this.onVadFrame.bind(this);
   private readonly handleSpeechSegment = this.onSpeechSegment.bind(this);
@@ -76,6 +79,12 @@ export class RecordingPipeline {
     );
 
     this.initializeCallbacks();
+
+    this.queue.onIdle(() => {
+      if (this.shuttingDown) {
+        this.finalCleanup();
+      }
+    });
   }
 
   // helper for accumulator creation in start function
@@ -116,12 +125,20 @@ export class RecordingPipeline {
 
   // starting native recording
   start() {
+    if (this.shuttingDown) {
+      console.warn("Pipeline still shutting down.");
+      return;
+    }
+
     if (this.recorder.isRecording()) {
       console.warn("Recorder is already running.");
       return;
     }
 
     console.log("Starting native recorder");
+
+    this.shuttingDown = false;
+    this.cancelled = false;
 
     this.resetSession();
 
@@ -143,36 +160,46 @@ export class RecordingPipeline {
 
   // stop native recording
   stop() {
+    if (!this.recorder.isRecording()) return;
+
+    console.log("Stopping native recorder");
+
+    this.shuttingDown = true;
+
+    this.endpointController.cancel();
+
+    const hasAudio =
+      !!this.accumulator &&
+      this.accumulator.hasData() &&
+      (this.state === RecorderState.COLLECTING ||
+        this.state === RecorderState.WAITING_ENDPOINT);
+
+    if (hasAudio) {
+      this.accumulator!.flush();
+    }
+
+    this.recorder.stop();
+
+    if (!hasAudio) {
+      this.finalCleanup();
+    }
+
+    console.log("Recording:", this.recorder.isRecording());
+  }
+
+  // cancel recording
+  cancel() {
     if (!this.recorder.isRecording()) {
       return;
     }
 
-    console.log("Stopping native recorder");
+    console.log("Cancelling recording");
+
+    this.cancelled = true;
 
     this.endpointController.cancel();
-
-    if (
-      (this.state === RecorderState.COLLECTING ||
-        this.state === RecorderState.WAITING_ENDPOINT) &&
-      this.accumulator?.hasData()
-    ) {
-      this.accumulator.flush();
-    }
-
     this.recorder.stop();
-    this.preRoll?.reset();
-    this.detector.reset();
-    this.state = RecorderState.IDLE;
-
-    this.accumulator?.removeAllListeners();
-    this.accumulator = null;
-    this.preRoll = null;
-
-    this.vadAccumulator.reset();
-    this.vad.reset();
-    this.silenceValidator.reset();
-
-    console.log("Recording:", this.recorder.isRecording());
+    this.finalCleanup();
   }
 
   // helper for initializing audio pipeline function
@@ -208,6 +235,8 @@ export class RecordingPipeline {
 
   //
   private onAudioData(err: unknown, pcm: number[]) {
+    if (this.cancelled) return;
+
     if (!this.accumulator || !this.preRoll) return;
 
     if (err) {
@@ -242,6 +271,8 @@ export class RecordingPipeline {
 
   // vad processing function
   private async onVadFrame(frame: Float32Array) {
+    if (this.cancelled) return;
+
     try {
       const rawDecision = await this.vad.isSpeech(frame);
       const decision = this.silenceValidator.update(rawDecision);
@@ -327,6 +358,8 @@ export class RecordingPipeline {
 
   // speech preprocessing function
   private onSpeechSegment(segment: SpeechSegment) {
+    if (this.cancelled) return;
+
     const samples = bufferToFloat32(segment.audio);
 
     const durationMs =
@@ -346,5 +379,31 @@ export class RecordingPipeline {
     const processed = this.preprocessor.process(chunk);
 
     void this.queue.enqueue(processed);
+  }
+
+  private finalCleanup() {
+    this.endpointController.cancel();
+
+    this.preRoll?.reset();
+    this.detector.reset();
+
+    this.accumulator?.removeAllListeners();
+    this.accumulator = null;
+
+    this.preRoll = null;
+
+    this.vadAccumulator.reset();
+    this.vad.reset();
+    this.silenceValidator.reset();
+
+    this.sequence = 0;
+
+    this.state = RecorderState.IDLE;
+
+    this.shuttingDown = false;
+    this.cancelled = false;
+
+    console.log("Pipeline cleaned");
+    console.log(Date.now(), "DONE");
   }
 }

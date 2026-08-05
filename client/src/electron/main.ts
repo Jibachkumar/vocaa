@@ -9,7 +9,11 @@ import { createOverlayWindow } from "./overlay.js";
 // import { registerGlobalShortcut } from "./services/shortcut.service.js";
 import { getOverlayWindow } from "./overlay.js";
 import { setMainWindow } from "./windowManager.js";
-import { startNativeRecording, stopNativeRecording } from "./native/audio.js";
+import {
+  startNativeRecording,
+  stopNativeRecording,
+  cancelNativeRecording,
+} from "./native/audio.js";
 import { sileroSession } from "./audio/vad/SileroSession.js";
 // import { inspect } from "./audio/vad/inspectModel.js";
 
@@ -23,6 +27,7 @@ const ShortcutEvent = {
   None: 0,
   Pressed: 1,
   Released: 2,
+  Cancelled: 3,
 } as const;
 let recording = false;
 
@@ -80,6 +85,12 @@ const bootstrap = async () => {
       if (event === ShortcutEvent.Released && recording) {
         recording = false;
         stopNativeRecording();
+      }
+
+      if (event === ShortcutEvent.Cancelled && recording) {
+        recording = false;
+        cancelNativeRecording();
+        console.log("Recording cancelled");
       }
     }, 10);
 

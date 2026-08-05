@@ -6,8 +6,15 @@ export class SpeechQueue {
   private queue: AudioChunk[] = [];
   private processing = false;
 
-  async enqueue(chunk: AudioChunk) {
+  private idleCallback?: () => void;
+
+  onIdle(callback: () => void) {
+    this.idleCallback = callback;
+  }
+
+  enqueue(chunk: AudioChunk) {
     this.queue.push(chunk);
+
     console.log(`Queue: ${this.queue.length} waiting`);
 
     if (this.processing) {
@@ -31,6 +38,8 @@ export class SpeechQueue {
     }
 
     this.processing = false;
+
+    this.idleCallback?.();
   }
 }
 
