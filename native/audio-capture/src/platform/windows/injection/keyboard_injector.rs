@@ -8,7 +8,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowTextW,
 };
 
-pub fn type_text(text: &str) {
+pub fn inject_text(text: &str) {
 
      unsafe {
         let hwnd = GetForegroundWindow();

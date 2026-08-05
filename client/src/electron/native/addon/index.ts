@@ -6,8 +6,9 @@ const native = require(getNativePath());
 
 export class NativeAddon {
   async typeText(text: string): Promise<void> {
-    native.typeText(text);
+    native.findEditTarget();
 
+    native.injectText(text);
     console.log("NativeAddon: ", text);
 
     // TODO:

@@ -1,6 +1,7 @@
 mod platform;
 
-use crate::platform::windows::{keyboard, shortcut};
+use crate::platform::windows::{injection, shortcut};
+
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     SampleFormat,
@@ -13,6 +14,8 @@ use std::sync::{Arc, Mutex};
 use napi_derive::napi;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+
 
 use napi::{
     bindgen_prelude::*,
@@ -267,8 +270,15 @@ impl AudioCapture {
 }
 
 #[napi]
-pub fn type_text(text: String) {
-    keyboard::type_text(&text);
+pub fn inject_text(text: String) {
+    if let Some(target) = shortcut::find_edit_target() {
+        injection::edit_control_injector::replace_edit_text(
+            target.hwnd,
+            &text,
+        );
+    } else {
+        injection::keyboard_injector::inject_text(&text);
+    }
 }
 
 #[napi]
@@ -279,4 +289,48 @@ pub fn register_shortcut() -> Result<()> {
 #[napi]
 pub fn take_shortcut_event() -> i32 {
     shortcut::take_shortcut_event()
+}
+
+#[napi(object)]
+pub struct JsWindowInfo {
+    pub process_name: String,
+    pub class_name: String,
+}
+
+#[napi]
+pub fn get_foreground_window_info() -> JsWindowInfo {
+    let info = shortcut::get_foreground_window_info();
+
+    JsWindowInfo {
+        process_name: info.process_name,
+        class_name: info.class_name,
+    }
+}
+
+#[napi]
+pub fn find_edit_target() {
+    match shortcut::find_edit_target() {
+        Some(target) => {
+            println!("HWND       : {:?}", target.hwnd);
+            println!("Class Name : {}", target.class_name);
+        }
+        None => {
+            println!("No edit target found");
+        }
+    }
+}
+
+#[napi]
+pub fn has_edit_target() -> bool {
+    shortcut::find_edit_target().is_some()
+}
+
+#[napi]
+pub fn replace_edit_text(text: String) {
+    if let Some(target) = shortcut::find_edit_target() {
+        injection::edit_control_injector::replace_edit_text(
+            target.hwnd,
+            &text,
+        );
+    }
 }

@@ -1,2 +1,2 @@
-pub mod keyboard;
+pub mod injection;
 pub mod shortcut;
